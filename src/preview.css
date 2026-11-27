@@ -1,0 +1,15 @@
+.preview-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 19px;
+  padding: 10px 12px;
+  border: 1px solid #444b36;
+  background: #23271e;
+  color: #cbd5b6;
+  font-size: 9px;
+}
+
+.preview-note svg {
+  color: #d5f26c;
+}
