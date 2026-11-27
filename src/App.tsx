@@ -32,7 +32,7 @@ function ReleaseCard({ release, index = 0 }: { release: Release; index?: number 
       <span className="format">{release.contentType === "movie" ? "FILM" : "SERIES"}</span>
     </div>
     <div className="release-info">
-      <div className="release-meta"><span className={`kind ${release.category === "THEATRICAL" ? "kind-theatre" : "kind-ott"}`}>{release.category === "THEATRICAL" ? "IN CINEMAS" : release.platform || "OTT"}</span><span className="date">{release.dateLabel}</span></div>
+      <div className="release-meta"><span className={`kind ${release.category === "THEATRICAL" ? "kind-theatre" : "kind-ott"}`}>{release.category === "THEATRICAL" ? `${release.currentlyShowing ? "NOW SHOWING" : "IN CINEMAS"}${release.city ? ` · ${release.city}` : ""}` : release.platform || "OTT"}</span><span className="date">{release.dateLabel}</span></div>
       <h3>{release.title}</h3>
       <p>{release.language} <i /> {release.genre} <i /> {release.contentType === "movie" ? `${release.runtime || "—"} min` : "Series"}</p>
       <div className="release-card-bottom">{release.verificationStatus !== "API_REPORTED" && <StatusBadge status={release.verificationStatus} />}{release.sourceUrl && <a href={release.sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div>
@@ -68,12 +68,14 @@ function ReleaseFeed({
   initialCategory?: ReleaseCategory; status?: ReleaseQuery["status"]; showCategory?: boolean; queryLabel?: string; initialQuery?: string;
 }) {
   const [category, setCategory] = useState<ReleaseCategory | undefined>(initialCategory);
+  const [city, setCity] = useState("Bengaluru");
   const [verification, setVerification] = useState<ReleaseQuery["verification_status"]>();
   const [query, setQuery] = useState(initialQuery);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   const [offset, setOffset] = useState(0);
   useEffect(() => { const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setOffset(0); }, 250); return () => window.clearTimeout(timer); }, [query]);
-  const request = useMemo(() => ({ from, to, category: showCategory ? category : initialCategory, status, verification_status: verification, q: debouncedQuery || undefined, limit: 25, offset }), [from, to, category, initialCategory, showCategory, status, verification, debouncedQuery, offset]);
+  const request = useMemo(() => ({ from, to, category: showCategory ? category : initialCategory, status, verification_status: verification, q: debouncedQuery || undefined, city, limit: 25, offset }), [from, to, category, initialCategory, showCategory, status, verification, debouncedQuery, city, offset]);
+  const showCityFilter = initialCategory === "THEATRICAL" || showCategory || title === "Search results";
   const { items, loading, error } = useReleaseData(request);
   const hasMore = items.length > 24;
   const visible = hasMore ? items.slice(0, 24) : items;
@@ -88,6 +90,11 @@ function ReleaseFeed({
           {[undefined, "THEATRICAL", "OTT"].map((value) => <button key={value ?? "all"} onClick={() => { setCategory(value as ReleaseCategory | undefined); setOffset(0); }} className={category === value ? "active" : ""}>{value ?? "All releases"}</button>)}
         </div>}
         <label className="search-field"><Search size={15} /><input aria-label={queryLabel} placeholder={queryLabel} value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        {showCityFilter && <label className="verification-filter">Theater city
+          <select aria-label="Filter by theater city" value={city} onChange={(event) => { setCity(event.target.value); setOffset(0); }}>
+            {["Bengaluru", "Hyderabad", "Chennai", "Mumbai", "Delhi", "All cities"].map((name) => <option key={name} value={name === "All cities" ? "all" : name}>{name}</option>)}
+          </select>
+        </label>}
         <label className="verification-filter">Evidence
           <select aria-label="Filter by evidence" value={verification ?? ""} onChange={(event) => { setVerification((event.target.value || undefined) as ReleaseQuery["verification_status"]); setOffset(0); }}>
             <option value="">All evidence</option><option value="VERIFIED">Verified</option><option value="API_REPORTED">API reported</option>
@@ -182,8 +189,8 @@ function PlatformsPage() {
       : error ? <div className="empty-state error-state" role="alert">{error}</div>
       : <div className="platform-grid">{platforms.map((platform) => <article className="platform-card" key={platform.id}>
         <div className="platform-card-top"><span className="platform-symbol">{platform.name.slice(0, 1)}</span><StatusBadge status={platform.status} /></div>
-        <h2>{platform.name}</h2><p>{platform.platform_category}</p>
-        <div className={`availability ${platform.india_available ? "available" : "unconfirmed"}`}><span />{platform.india_available ? "India availability confirmed" : "India availability not verified"}</div>
+        <h2>{platform.name}</h2><p>{platform.category}</p>
+        <div className={`availability ${platform.indiaAvailable ? "available" : "unconfirmed"}`}><span />{platform.indiaAvailable ? "India availability confirmed" : "India availability not verified"}</div>
         {platform.website && <a href={platform.website} target="_blank" rel="noreferrer">Official site <ArrowRight size={13} /></a>}
       </article>)}</div>}
     {!loading && !error && platforms.length === 0 && <div className="empty-state">No platform records are available.</div>}

@@ -7,24 +7,17 @@ function isoDay(offset: number): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
-const releases = [
-  {
-    id: "theatrical-1", title: "Mayan - Chapter 1", release_category: "THEATRICAL",
-    release_date: isoDay(0), original_language: "ta", genres: ["Action", "Drama"],
-    content_type: "movie", runtime: 122, platform_name: null, poster_path: null,
-    verification_status: "API_REPORTED", status: "UPCOMING", source_url: "https://www.themoviedb.org/movie/1",
-  },
-  {
-    id: "ott-1", title: "River of Stars", release_category: "OTT",
-    release_date: isoDay(1), original_language: "hi", genres: ["Drama"],
-    content_type: "series", runtime: 0, platform_name: "Netflix India", poster_path: null,
-    verification_status: "VERIFIED", status: "UPCOMING", source_url: "https://www.netflix.com/",
-  },
-];
+// Slim film objects, as ott-ingest's /api/v1/movies/* endpoints return them.
+const film = (filmId: string, title: string, releaseDate: string, cities: string[], languages: string[], genres: string[]) => ({
+  filmId, title, releaseDate, languages, trailerUrl: null, posterVertical: null, posterHorizontal: null,
+  tmdbId: null, genres, certificate: "UA", durationMin: 122, cities,
+});
+const nowShowing = [film("39525", "Mayan - Chapter 1", isoDay(0), ["bengaluru"], ["Tamil"], ["Action", "Drama"])];
+const comingSoon = [{ ...film("39600", "River of Stars", isoDay(1), ["bengaluru", "hyderabad"], ["Hindi"], ["Drama"]), status: "upcoming" }];
 
 const platforms = [
-  { id: "netflix", name: "Netflix India", slug: "netflix-india", website: "https://www.netflix.com/in/", platform_category: "general entertainment", status: "ACTIVE", india_available: true },
-  { id: "prime", name: "Prime Video India", slug: "prime-video-india", website: "https://www.primevideo.com/", platform_category: "general entertainment", status: "ACTIVE", india_available: true },
+  { id: "netflix", name: "Netflix India", slug: "netflix-india", website: "https://www.netflix.com/in/", logoUrl: null, category: "general entertainment", contentLanguages: ["hi", "ta"], status: "ACTIVE", indiaAvailable: true },
+  { id: "prime", name: "Prime Video India", slug: "prime-video-india", website: "https://www.primevideo.com/", logoUrl: null, category: "general entertainment", contentLanguages: ["hi", "ta"], status: "ACTIVE", indiaAvailable: true },
 ];
 
 const announcements = [
@@ -32,46 +25,32 @@ const announcements = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/ott/releases**", async (route) => {
-    const url = new URL(route.request().url());
-    const params = url.searchParams;
-    let rows = [...releases];
-    const category = params.get("category");
-    const query = params.get("q")?.toLowerCase();
-    const from = params.get("from");
-    const to = params.get("to");
-    const status = params.get("status");
-    const verification = params.get("verification_status");
-    if (category) rows = rows.filter((row) => row.release_category === category);
-    if (query) rows = rows.filter((row) => row.title.toLowerCase().includes(query));
-    if (from) rows = rows.filter((row) => row.release_date >= from);
-    if (to) rows = rows.filter((row) => row.release_date <= to);
-    if (status) rows = rows.filter((row) => row.status === status);
-    if (verification) rows = rows.filter((row) => row.verification_status === verification);
-    const offset = Number(params.get("offset") ?? 0);
-    const limit = Number(params.get("limit") ?? 24);
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows.slice(offset, offset + limit)) });
-  });
-  await page.route("**/ott/platforms", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(platforms) }));
+  const films = (rows: Array<{ cities: string[] }>) => async (route: import("@playwright/test").Route) => {
+    const city = new URL(route.request().url()).searchParams.get("city")?.toLowerCase();
+    const data = city ? rows.filter((row) => row.cities.includes(city)) : rows;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: data.length, data }) });
+  };
+  await page.route("**/api/v1/movies/now-showing**", films(nowShowing));
+  await page.route("**/api/v1/movies/coming-soon**", films(comingSoon));
+  await page.route("**/api/v1/ott-platforms", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: platforms.length, data: platforms }) }));
   await page.route("**/ott/announcements**", async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(announcements) }));
   await page.goto("/");
 });
 
-test("Discover loads real-shaped API data and labels its evidence", async ({ page }) => {
+test("Discover merges now-showing and coming-soon films without evidence labels", async ({ page }) => {
   await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "River of Stars" })).toBeVisible();
   await expect(page.locator(".status-api-reported")).toHaveCount(0);
   await expect(page.getByText("SOURCE REPORTED")).toHaveCount(0);
-  await expect(page.locator(".status-verified")).toBeVisible();
 });
 
-test("Discover filters request category-specific records", async ({ page }) => {
+test("Discover filters by category; OTT has no premieres yet", async ({ page }) => {
   await page.getByRole("button", { name: /THEATRICAL/i }).click();
-  await expect(page.locator("[data-testid=release-card]")).toHaveCount(1);
-  await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toBeVisible();
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
   await page.getByRole("button", { name: "OTT", exact: true }).click();
-  await expect(page.locator("[data-testid=release-card]")).toHaveCount(1);
-  await expect(page.getByRole("heading", { name: "River of Stars" })).toBeVisible();
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(0);
+  await expect(page.getByText(/No India OTT release dates are verified yet/)).toBeVisible();
 });
 
 test("Theatrical and OTT have dedicated, server-filtered pages", async ({ page }) => {
@@ -82,7 +61,19 @@ test("Theatrical and OTT have dedicated, server-filtered pages", async ({ page }
 
   await page.getByRole("link", { name: "OTT", exact: true }).click();
   await expect(page).toHaveURL(/\/ott$/);
-  await expect(page.getByRole("heading", { name: "River of Stars" })).toBeVisible();
+  await expect(page.getByText(/No India OTT release dates are verified yet/)).toBeVisible();
+});
+
+test("Theatrical releases default to Bengaluru and support the five PVR cities", async ({ page }) => {
+  await page.getByRole("link", { name: "Theatrical", exact: true }).click();
+  const cityFilter = page.getByRole("combobox", { name: "Filter by theater city" });
+  await expect(cityFilter).toHaveValue("Bengaluru");
+  await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toBeVisible();
+  await expect(page.getByText("NOW SHOWING · Bengaluru")).toBeVisible();
+  await cityFilter.selectOption("Hyderabad");
+  await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toHaveCount(0);
+  await cityFilter.selectOption("all");
+  await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toBeVisible();
 });
 
 test("This Week and Upcoming use date and release-status filters", async ({ page }) => {
