@@ -41,22 +41,19 @@ function ReleaseCard({ release, index = 0 }: { release: Release; index?: number 
 
 function useReleaseData(query: ReleaseQuery) {
   const queryKey = JSON.stringify(query);
-  const [items, setItems] = useState<Release[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ key: string; items: Release[]; error: string }>({ key: "", items: [], error: "" });
   useEffect(() => {
     let active = true;
     const parsedQuery = JSON.parse(queryKey) as ReleaseQuery;
-    setLoading(true);
-    setError("");
     getReleases(parsedQuery).then((rows) => {
-      if (active) setItems(rows);
+      if (active) setResult({ key: queryKey, items: rows, error: "" });
     }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : "Could not load releases.");
-    }).finally(() => { if (active) setLoading(false); });
+      if (active) setResult({ key: queryKey, items: [], error: reason instanceof Error ? reason.message : "Could not load releases." });
+    });
     return () => { active = false; };
   }, [queryKey]);
-  return { items, loading, error };
+  const loading = result.key !== queryKey;
+  return { items: loading ? [] : result.items, loading, error: loading ? "" : result.error };
 }
 
 function PageHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
@@ -193,29 +190,39 @@ function PlatformsPage() {
 }
 
 function AnnouncementsPage() {
-  const [items, setItems] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  useEffect(() => { const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 250); return () => window.clearTimeout(timer); }, [query]);
-  useEffect(() => { setOffset(0); }, [debouncedQuery]);
+  const [result, setResult] = useState<{ key: string; query: string; items: Announcement[]; hasMore: boolean; error: string }>({ key: "", query: "", items: [], hasMore: false, error: "" });
+  useEffect(() => { const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setOffset(0); }, 250); return () => window.clearTimeout(timer); }, [query]);
+  const requestKey = `${debouncedQuery}:${offset}`;
   useEffect(() => {
     let active = true;
-    setLoading(true); setError("");
     getAnnouncements({ q: debouncedQuery || undefined, limit: 51, offset }).then((rows) => {
       if (active) {
-        setHasMore(rows.length > 50);
         const page = rows.slice(0, 50);
-        setItems((current) => offset ? [...current, ...page] : page);
+        setResult((current) => ({
+          key: requestKey,
+          query: debouncedQuery,
+          items: offset && current.query === debouncedQuery ? [...current.items, ...page] : page,
+          hasMore: rows.length > 50,
+          error: "",
+        }));
       }
     })
-      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Could not load announcements."); })
-      .finally(() => { if (active) setLoading(false); });
+      .catch((reason: unknown) => { if (active) setResult((current) => ({
+        key: requestKey,
+        query: debouncedQuery,
+        items: current.query === debouncedQuery ? current.items : [],
+        hasMore: false,
+        error: reason instanceof Error ? reason.message : "Could not load announcements.",
+      })); });
     return () => { active = false; };
-  }, [debouncedQuery, offset]);
+  }, [debouncedQuery, offset, requestKey]);
+  const loading = result.key !== requestKey;
+  const items = result.query === debouncedQuery ? result.items : [];
+  const error = loading ? "" : result.error;
+  const hasMore = result.query === debouncedQuery && result.hasMore;
   const duplicates = items.reduce((total, item) => total + item.duplicate_count, 0);
   return <main className="page-shell">
     <PageHeading eyebrow="HUGGIN RSS · DEDUPLICATED" title="Announcements" subtitle="Entertainment news items from our RSS sources. An article’s publication date is not a verified release date." />
