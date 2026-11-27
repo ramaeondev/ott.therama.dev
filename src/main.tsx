@@ -6,6 +6,7 @@ import "./styles.css";
 import "./preview.css";
 import "./header.css";
 import "./poster.css";
+import "./app.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

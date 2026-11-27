@@ -10,7 +10,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The dashboard currently uses sample release cards when the `/ott/releases` endpoint is unavailable or has no rows. The sample cards are UI placeholders, not real release announcements. The browser calls only public `/ott/releases`; ingestion and provider credentials stay in the backend repository and server environment.
+The UI reads public endpoints from `api-v3.therama.dev/ott/`. Release pages use `/ott/releases`, the platform directory uses `/ott/platforms`, and the public Announcements page uses `/ott/announcements`. RSS announcements are deduplicated and labeled as news items; their article dates are never treated as release dates. Ingestion and provider credentials stay in the backend repository and server environment.
 
 ## End-to-end tests
 
@@ -19,10 +19,10 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The Playwright suite starts Vite on port 4173 and stubs release responses so UI tests do not depend on live data. It covers release loading, category filters, search, navigation, and a roadmap gap audit.
+The Playwright suite starts Vite on port 4173 and stubs API responses so UI tests do not depend on live data. It covers release pages, evidence badges, search, calendar views, platforms, RSS announcements, responsive navigation, and unknown routes.
 
 ## Backend
 
-The database migrations and ingestion API live only in the `api.therama.dev` repository. The public API returns India theatrical releases marked `API_REPORTED` or `VERIFIED`; pending RSS items remain unpublished. The platform endpoint includes candidate services with explicit verification and India-availability fields.
+The database migrations and ingestion API live only in the `api.therama.dev` repository. The public API returns India release records marked `API_REPORTED` or `VERIFIED`; RSS items appear in a separate deduplicated announcements feed. The platform endpoint includes candidate services with explicit verification and India-availability fields.
 
-Huginn remains the collection/orchestration system. OTT RSS entries are preserved as raw source items; TMDB supplies theatrical candidates and Watchmode checks India availability. Release verification and full OTT premiere matching remain gaps for later implementation.
+Huginn remains the collection/orchestration system. OTT RSS entries are preserved as raw source items and duplicate copies are merged in the public feed. TMDB supplies theatrical candidates and Watchmode checks India availability. Release verification and full OTT premiere matching remain gaps for later implementation.
