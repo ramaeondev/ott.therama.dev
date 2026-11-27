@@ -19,7 +19,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The Playwright suite starts Vite on port 4173 and stubs API responses so UI tests do not depend on live data. It covers release pages, evidence badges, search, calendar views, platforms, RSS announcements, responsive navigation, and unknown routes.
+The Playwright suite starts Vite on port 4173 and stubs API responses so UI tests do not depend on live data. It covers release pages, status-label suppression, search, calendar views, platforms, RSS announcements, responsive navigation, and unknown routes.
 
 ## Backend
 

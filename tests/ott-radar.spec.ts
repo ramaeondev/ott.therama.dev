@@ -23,8 +23,8 @@ const releases = [
 ];
 
 const platforms = [
-  { id: "netflix", name: "Netflix India", slug: "netflix-india", website: "https://www.netflix.com/in/", platform_category: "general entertainment", status: "UNVERIFIED", india_available: false },
-  { id: "prime", name: "Prime Video India", slug: "prime-video-india", website: "https://www.primevideo.com/", platform_category: "general entertainment", status: "MONITORING", india_available: true },
+  { id: "netflix", name: "Netflix India", slug: "netflix-india", website: "https://www.netflix.com/in/", platform_category: "general entertainment", status: "ACTIVE", india_available: true },
+  { id: "prime", name: "Prime Video India", slug: "prime-video-india", website: "https://www.primevideo.com/", platform_category: "general entertainment", status: "ACTIVE", india_available: true },
 ];
 
 const announcements = [
@@ -60,7 +60,8 @@ test.beforeEach(async ({ page }) => {
 test("Discover loads real-shaped API data and labels its evidence", async ({ page }) => {
   await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Mayan - Chapter 1" })).toBeVisible();
-  await expect(page.locator(".status-api-reported")).toBeVisible();
+  await expect(page.locator(".status-api-reported")).toHaveCount(0);
+  await expect(page.getByText("SOURCE REPORTED")).toHaveCount(0);
   await expect(page.locator(".status-verified")).toBeVisible();
 });
 
@@ -114,12 +115,13 @@ test("Calendar supports week and month grids with period navigation", async ({ p
   await expect(page.getByRole("grid")).toBeVisible();
 });
 
-test("Platforms is populated from the API and marks uncertain availability", async ({ page }) => {
+test("Platforms are populated from the API and shown as verified", async ({ page }) => {
   await page.getByRole("link", { name: "Platforms", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Streaming platforms" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Netflix India" })).toBeVisible();
-  await expect(page.getByText("India availability not verified")).toBeVisible();
-  await expect(page.getByText("India availability confirmed")).toBeVisible();
+  await expect(page.locator(".platform-card .status-badge")).toHaveText(["Verified", "Verified"]);
+  await expect(page.getByText("India availability not verified")).toHaveCount(0);
+  await expect(page.getByText("India availability confirmed")).toHaveCount(2);
 });
 
 test("Announcements publish deduplicated RSS articles without presenting article dates as release dates", async ({ page }) => {

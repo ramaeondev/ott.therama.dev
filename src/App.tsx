@@ -17,7 +17,8 @@ function Header() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const labels: Record<string, string> = { VERIFIED: "Verified", API_REPORTED: "API reported", UPCOMING: "Upcoming", RELEASED: "Released", ANNOUNCED: "Announced" };
+  if (status === "API_REPORTED" || status === "UNVERIFIED") return null;
+  const labels: Record<string, string> = { VERIFIED: "Verified", ACTIVE: "Verified", UPCOMING: "Upcoming", RELEASED: "Released", ANNOUNCED: "Announced" };
   return <span className={`status-badge status-${status.toLowerCase().replaceAll("_", "-")}`}>{labels[status] ?? status.replaceAll("_", " ")}</span>;
 }
 
@@ -27,14 +28,14 @@ function ReleaseCard({ release, index = 0 }: { release: Release; index?: number 
     <div className={`poster poster-${palette}`}>
       {release.posterUrl && <img className="poster-image" src={release.posterUrl} alt={`${release.title} poster`} loading="lazy" />}
       <span className="poster-label">{release.category === "THEATRICAL" ? "IN INDIAN CINEMAS" : release.platform || "OTT RADAR"}</span>
-      <div className="poster-copy"><span>{release.verificationStatus === "VERIFIED" ? "CONFIRMED RELEASE" : "SOURCE REPORTED"}</span><strong>{release.title}</strong></div>
+      <div className="poster-copy"><span>{release.verificationStatus === "VERIFIED" ? "CONFIRMED RELEASE" : "INDIA RELEASE"}</span><strong>{release.title}</strong></div>
       <span className="format">{release.contentType === "movie" ? "FILM" : "SERIES"}</span>
     </div>
     <div className="release-info">
       <div className="release-meta"><span className={`kind ${release.category === "THEATRICAL" ? "kind-theatre" : "kind-ott"}`}>{release.category === "THEATRICAL" ? "IN CINEMAS" : release.platform || "OTT"}</span><span className="date">{release.dateLabel}</span></div>
       <h3>{release.title}</h3>
       <p>{release.language} <i /> {release.genre} <i /> {release.contentType === "movie" ? `${release.runtime || "—"} min` : "Series"}</p>
-      <div className="release-card-bottom"><StatusBadge status={release.verificationStatus} />{release.sourceUrl && <a href={release.sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div>
+      <div className="release-card-bottom">{release.verificationStatus !== "API_REPORTED" && <StatusBadge status={release.verificationStatus} />}{release.sourceUrl && <a href={release.sourceUrl} target="_blank" rel="noreferrer">Source</a>}</div>
     </div>
   </article>;
 }
@@ -98,7 +99,7 @@ function ReleaseFeed({
         : visible.length ? <div className="release-grid">{visible.map((release, index) => <ReleaseCard key={release.id} release={release} index={index} />)}</div>
         : <div className="empty-state" role="status">{emptyMessage}</div>}
       {hasMore && <button className="load-more" onClick={() => setOffset((value) => value + 24)}>Load more releases <ArrowDown size={14} /></button>}
-      {visible.length > 0 && <p className="data-note"><ShieldCheck size={14} /> Release dates include their evidence status. Pending and rejected items are not public.</p>}
+      {visible.length > 0 && <p className="data-note"><ShieldCheck size={14} /> Release sources are linked where available; announcements are listed separately.</p>}
     </section>
   </main>;
 }
@@ -128,7 +129,7 @@ function Discover() {
   const weekFrom = startOfWeek(today);
   const weekTo = addDays(weekFrom, 6);
   return <main>
-    <section className="hero"><div className="hero-text"><div className="eyebrow"><span className="live-dot" /> YOUR INDIA RELEASE RADAR <span className="eyebrow-line" /></div><h1>Know what’s<br />coming <em>next.</em></h1><p>Indian cinema releases and OTT availability,<br className="desktop-break" /> with the evidence shown up front.</p><div className="hero-buttons"><Link to="/week" className="button button-primary">This week <ArrowRight size={16} /></Link><Link to="/calendar" className="button button-quiet"><CalendarDays size={16} /> Open calendar</Link></div><div className="hero-caption"><span className="caption-dash" /> {weekLabel(weekFrom, weekTo)} · INDIA</div></div><div className="hero-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbital-star">✳</div><div className="hero-poster hero-poster-back"><span>THE NEXT<br />CHAPTER</span><small>COMING SOON</small></div><div className="hero-poster hero-poster-front"><div className="hero-poster-art"><span className="moon" /><span className="horizon" /></div><span className="hero-poster-title">A WORLD<br />AWAKENS</span><small>AN ORIGINAL SERIES</small></div></div><div className="hero-bottom"><span>INDIA, ON THE BIG SCREEN &amp; BEYOND</span><span>DATES SHOW THEIR EVIDENCE <span className="scroll-arrow">↓</span></span></div></section>
+    <section className="hero"><div className="hero-text"><div className="eyebrow"><span className="live-dot" /> YOUR INDIA RELEASE RADAR <span className="eyebrow-line" /></div><h1>Know what’s<br />coming <em>next.</em></h1><p>Indian cinema releases and OTT availability,<br className="desktop-break" /> with source links where available.</p><div className="hero-buttons"><Link to="/week" className="button button-primary">This week <ArrowRight size={16} /></Link><Link to="/calendar" className="button button-quiet"><CalendarDays size={16} /> Open calendar</Link></div><div className="hero-caption"><span className="caption-dash" /> {weekLabel(weekFrom, weekTo)} · INDIA</div></div><div className="hero-art"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbital-star">✳</div><div className="hero-poster hero-poster-back"><span>THE NEXT<br />CHAPTER</span><small>COMING SOON</small></div><div className="hero-poster hero-poster-front"><div className="hero-poster-art"><span className="moon" /><span className="horizon" /></div><span className="hero-poster-title">A WORLD<br />AWAKENS</span><small>AN ORIGINAL SERIES</small></div></div><div className="hero-bottom"><span>INDIA, ON THE BIG SCREEN &amp; BEYOND</span><span>SOURCES LINKED WHERE AVAILABLE <span className="scroll-arrow">↓</span></span></div></section>
     <ReleaseFeed eyebrow="THE RELEASE RADAR" title="This week, in focus." subtitle="The stories, films and series landing across India." from={dateToIso(weekFrom)} to={dateToIso(weekTo)} showCategory />
     <footer><Link className="brand" to="/"><span className="brand-mark"><span /></span><span>OTT<span className="brand-light">RADAR</span></span></Link><span>Made for what India watches next.</span><span className="credits">Data by <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">TMDB</a> &amp; <a href="https://www.watchmode.com/" target="_blank" rel="noreferrer">Watchmode</a></span><span>© 2026 OTT Radar <i /> IST · India</span></footer>
   </main>;
@@ -141,7 +142,7 @@ function WeekPage() {
   return <ReleaseFeed eyebrow="MONDAY – SUNDAY · IST" title="This week" subtitle={`${weekLabel(dateFromIso(from), dateFromIso(to))} · India`} from={from} to={to} showCategory />;
 }
 function TheatricalPage() {
-  return <ReleaseFeed eyebrow="IN INDIAN CINEMAS" title="Theatrical releases" subtitle="India release dates reported by the metadata source, with evidence status shown on each title." initialCategory="THEATRICAL" />;
+  return <ReleaseFeed eyebrow="IN INDIAN CINEMAS" title="Theatrical releases" subtitle="India theatrical release dates with source links where available." initialCategory="THEATRICAL" />;
 }
 function OttPage() {
   return <ReleaseFeed eyebrow="INDIA STREAMING" title="OTT releases" subtitle="Only platform dates available in India. Pending announcements stay out of public listings." initialCategory="OTT" />;
