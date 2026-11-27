@@ -173,3 +173,173 @@ test("navigation has every requested route and works at mobile width", async ({ 
   await page.getByRole("link", { name: "Search", exact: true }).click();
   await expect(page).toHaveURL(/\/search$/);
 });
+
+test("every public route loads directly", async ({ page }) => {
+  const routes = [
+    ["/", "YOUR INDIA RELEASE RADAR"],
+    ["/theatrical", "Theatrical releases"],
+    ["/ott", "OTT releases"],
+    ["/week", "This week"],
+    ["/upcoming", "Upcoming"],
+    ["/announcements", "Announcements"],
+    ["/calendar", "Release calendar"],
+    ["/platforms", "Streaming platforms"],
+    ["/search", "Find a title"],
+  ] as const;
+  for (const [path, heading] of routes) {
+    await page.goto(path);
+    await expect(page.getByText(heading, { exact: false }).first()).toBeVisible();
+    await expect(page.locator("[role=alert]")).toHaveCount(0);
+  }
+});
+
+test("header, brand, and hero links navigate to their destinations", async ({ page }) => {
+  await page.getByRole("link", { name: "Search releases" }).click();
+  await expect(page).toHaveURL(/\/search$/);
+  await page.getByRole("link", { name: "OTT Radar home" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("link", { name: "This week", exact: true }).click();
+  await expect(page).toHaveURL(/\/week$/);
+  await page.getByRole("link", { name: "Open calendar" }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await page.locator("footer .brand").click();
+  await expect(page).toHaveURL(/\/$/);
+});
+
+test("release category and evidence selectors exercise every option", async ({ page }) => {
+  await page.getByRole("button", { name: "THEATRICAL", exact: true }).click();
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
+  await page.getByRole("button", { name: "OTT", exact: true }).click();
+  await expect(page.getByText(/No India OTT release dates are verified yet/)).toBeVisible();
+  await page.getByRole("button", { name: "All releases", exact: true }).click();
+  const evidence = page.getByRole("combobox", { name: "Filter by evidence" });
+  await expect(evidence.locator("option")).toHaveText(["All evidence", "Verified", "API reported"]);
+  await evidence.selectOption("API_REPORTED");
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
+  await evidence.selectOption("VERIFIED");
+  await expect(page.getByText("No releases match this date range and these filters.")).toBeVisible();
+  await evidence.selectOption("");
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(2);
+});
+
+test("release pagination appends the next page without dropping the first page", async ({ page }) => {
+  await page.unroute("**/api/v1/movies/now-showing**");
+  await page.unroute("**/api/v1/movies/coming-soon**");
+  let apiRequests = 0;
+  const rows = Array.from({ length: 49 }, (_, index) => film(`page-${index + 1}`, `Release ${index + 1}`, isoDay(1), ["bengaluru"], ["Hindi"], ["Drama"]));
+  await page.route("**/api/v1/movies/now-showing**", async (route) => {
+    apiRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: 0, data: [] }) });
+  });
+  await page.route("**/api/v1/movies/coming-soon**", async (route) => {
+    apiRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: rows.length, data: rows }) });
+  });
+  await page.goto("/");
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(24);
+  await expect(page.getByRole("button", { name: "Load more releases" })).toBeVisible();
+  await page.getByRole("button", { name: "Load more releases" }).click();
+  await expect(page.locator("[data-testid=release-card]")).toHaveCount(48);
+  await expect(page.getByRole("heading", { name: "Release 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Release 25", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Release 48", exact: true })).toBeVisible();
+  expect(apiRequests).toBeGreaterThanOrEqual(4);
+});
+
+test("theater city filter exposes and requests all five configured cities", async ({ page }) => {
+  await page.getByRole("link", { name: "Theatrical", exact: true }).click();
+  const filter = page.getByRole("combobox", { name: "Filter by theater city" });
+  await expect(filter.locator("option")).toHaveText(["Bengaluru", "Hyderabad", "Chennai", "Mumbai", "Delhi", "All cities"]);
+  const requestedCities: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/movies/coming-soon")) requestedCities.push(new URL(request.url()).searchParams.get("city") ?? "all");
+  });
+  for (const city of ["Hyderabad", "Bengaluru", "Chennai", "Mumbai", "Delhi", "all"] as const) {
+    const matchingRequest = page.waitForRequest((request) => {
+      if (!request.url().includes("/api/v1/movies/coming-soon")) return false;
+      const params = new URL(request.url()).searchParams;
+      return city === "all" ? !params.has("city") : params.get("city") === city;
+    });
+    await filter.selectOption(city);
+    await matchingRequest;
+  }
+  expect(requestedCities).toEqual(expect.arrayContaining(["Bengaluru", "Hyderabad", "Chennai", "Mumbai", "Delhi", "all"]));
+});
+
+test("search form submits a term and clears it when submitted empty", async ({ page }) => {
+  await page.getByRole("link", { name: "Search", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Search titles" });
+  await input.fill("River");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/\/search\?q=River$/);
+  await input.fill("");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/\/search$/);
+  await expect(page.getByText("Enter a title to search releases.")).toBeVisible();
+});
+
+test("announcement search filters the visible results", async ({ page }) => {
+  await page.unroute("**/ott/announcements**");
+  await page.route("**/ott/announcements**", async (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q")?.toLowerCase() ?? "";
+    const rows = announcements.filter((item) => item.title.toLowerCase().includes(q));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+  await page.getByRole("link", { name: "Announcements", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "New series announced for India" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Search announcements" }).fill("nonexistent");
+  await expect(page.getByText("No announcements match this search.")).toBeVisible();
+});
+
+test("calendar previous, next, today, week, and month controls all work", async ({ page }) => {
+  await page.getByRole("link", { name: "Calendar", exact: true }).click();
+  const grid = page.getByRole("grid");
+  const initial = await grid.getAttribute("aria-label");
+  await page.getByRole("button", { name: "Next period" }).click();
+  const next = await grid.getAttribute("aria-label");
+  expect(next).not.toBe(initial);
+  await page.getByRole("button", { name: "Previous period" }).click();
+  await expect(grid).toHaveAttribute("aria-label", initial ?? "");
+  await page.getByRole("button", { name: "Month" }).click();
+  await expect(grid).toHaveClass(/month/);
+  await expect(page.getByRole("gridcell")).toHaveCount(42);
+  await page.getByRole("button", { name: "Previous period" }).click();
+  const previousMonth = await grid.getAttribute("aria-label");
+  expect(previousMonth).not.toBe(initial);
+  await page.getByRole("button", { name: "Next period" }).click();
+  await page.getByRole("button", { name: "Today" }).click();
+  await expect(grid).toHaveAttribute("aria-label", /2026/);
+  await page.getByRole("button", { name: "Week" }).click();
+  await expect(grid).toHaveClass(/week/);
+  await expect(page.getByRole("gridcell")).toHaveCount(7);
+});
+
+test("calendar + more button expands and collapses the remaining same-day releases", async ({ page }) => {
+  await page.unroute("**/api/v1/movies/now-showing**");
+  await page.unroute("**/api/v1/movies/coming-soon**");
+  const date = isoDay(1);
+  const rows = Array.from({ length: 6 }, (_, index) => film(`calendar-${index + 1}`, `Calendar Film ${index + 1}`, date, ["bengaluru"], ["Hindi"], ["Drama"]));
+  await page.route("**/api/v1/movies/now-showing**", async (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: 0, data: [] }) }));
+  await page.route("**/api/v1/movies/coming-soon**", async (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ count: rows.length, data: rows }) }));
+  await page.goto("/calendar");
+  await page.getByRole("button", { name: "Month" }).click();
+  const cell = page.getByRole("gridcell").filter({ hasText: "Calendar Film 1" });
+  await expect(cell.locator(".calendar-event")).toHaveCount(2);
+  const expand = page.getByRole("button", { name: `Show 4 more releases on ${date}` });
+  await expect(expand).toHaveAttribute("aria-expanded", "false");
+  await expand.click();
+  await expect(cell.locator(".calendar-event")).toHaveCount(6);
+  const collapse = page.getByRole("button", { name: `Show fewer releases on ${date}` });
+  await expect(collapse).toHaveAttribute("aria-expanded", "true");
+  await collapse.click();
+  await expect(cell.locator(".calendar-event")).toHaveCount(2);
+});
+
+test("not-found recovery button returns to Discover", async ({ page }) => {
+  await page.goto("/missing-route");
+  await page.getByRole("link", { name: "Back to Discover" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("YOUR INDIA RELEASE RADAR")).toBeVisible();
+});

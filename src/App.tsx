@@ -42,19 +42,35 @@ function ReleaseCard({ release, index = 0 }: { release: Release; index?: number 
 
 function useReleaseData(query: ReleaseQuery) {
   const queryKey = JSON.stringify(query);
-  const [result, setResult] = useState<{ key: string; items: Release[]; error: string }>({ key: "", items: [], error: "" });
+  const [result, setResult] = useState<{ key: string; items: Release[]; hasMore: boolean; error: string }>({ key: "", items: [], hasMore: false, error: "" });
   useEffect(() => {
     let active = true;
     const parsedQuery = JSON.parse(queryKey) as ReleaseQuery;
     getReleases(parsedQuery).then((rows) => {
-      if (active) setResult({ key: queryKey, items: rows, error: "" });
+      if (active) setResult((current) => {
+        const page = rows.slice(0, 24);
+        const items = parsedQuery.offset
+          ? [...current.items, ...page.filter((item) => !current.items.some((loaded) => loaded.id === item.id))]
+          : page;
+        return { key: queryKey, items, hasMore: rows.length > 24, error: "" };
+      });
     }).catch((reason: unknown) => {
-      if (active) setResult({ key: queryKey, items: [], error: reason instanceof Error ? reason.message : "Could not load releases." });
+      if (active) setResult((current) => ({
+        key: queryKey,
+        items: parsedQuery.offset ? current.items : [],
+        hasMore: false,
+        error: reason instanceof Error ? reason.message : "Could not load releases.",
+      }));
     });
     return () => { active = false; };
   }, [queryKey]);
   const loading = result.key !== queryKey;
-  return { items: loading ? [] : result.items, loading, error: loading ? "" : result.error };
+  return {
+    items: loading ? [] : result.items,
+    hasMore: loading ? false : result.hasMore,
+    loading,
+    error: loading ? "" : result.error,
+  };
 }
 
 function PageHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: string; subtitle: string }) {
@@ -76,9 +92,7 @@ function ReleaseFeed({
   useEffect(() => { const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setOffset(0); }, 250); return () => window.clearTimeout(timer); }, [query]);
   const request = useMemo(() => ({ from, to, category: showCategory ? category : initialCategory, status, verification_status: verification, q: debouncedQuery || undefined, city, limit: 25, offset }), [from, to, category, initialCategory, showCategory, status, verification, debouncedQuery, city, offset]);
   const showCityFilter = initialCategory === "THEATRICAL" || showCategory || title === "Search results";
-  const { items, loading, error } = useReleaseData(request);
-  const hasMore = items.length > 24;
-  const visible = hasMore ? items.slice(0, 24) : items;
+  const { items: visible, hasMore, loading, error } = useReleaseData(request);
   const emptyMessage = category === "OTT" || initialCategory === "OTT"
     ? "No India OTT release dates are verified yet. We’ll show titles here when a platform date is confirmed."
     : "No releases match this date range and these filters.";
@@ -255,6 +269,7 @@ function AnnouncementsPage() {
 function CalendarPage() {
   const [view, setView] = useState<"week" | "month">("week");
   const [anchor, setAnchor] = useState(() => dateFromIso(indiaToday()));
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const start = view === "week" ? startOfWeek(anchor) : startOfWeek(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
   const count = view === "week" ? 7 : 42;
   const dates = daysBetween(start, count);
@@ -281,10 +296,19 @@ function CalendarPage() {
             const iso = dateToIso(date);
             const dayItems = byDate.get(iso) ?? [];
             const otherMonth = view === "month" && date.getMonth() !== anchor.getMonth();
+            const itemLimit = view === "week" ? 5 : 2;
+            const expanded = expandedDay === iso;
+            const visibleItems = expanded ? dayItems : dayItems.slice(0, itemLimit);
             return <div role="gridcell" className={`calendar-day ${otherMonth ? "other-month" : ""}`} key={iso}>
               <span className="calendar-day-number">{date.getDate()}</span>
-              {dayItems.slice(0, view === "week" ? 5 : 2).map((item) => <div className={`calendar-event ${item.category.toLowerCase()}`} key={item.id} title={`${item.title} · ${item.verificationStatus}`}><b>{item.category === "THEATRICAL" ? "Cinema" : item.platform || "OTT"}</b><span>{item.title}</span></div>)}
-              {dayItems.length > (view === "week" ? 5 : 2) && <span className="more-events">+{dayItems.length - (view === "week" ? 5 : 2)} more</span>}
+              {visibleItems.map((item) => <div className={`calendar-event ${item.category.toLowerCase()}`} key={item.id} title={`${item.title} · ${item.verificationStatus}`}><b>{item.category === "THEATRICAL" ? "Cinema" : item.platform || "OTT"}</b><span>{item.title}</span></div>)}
+              {dayItems.length > itemLimit && <button
+                type="button"
+                className="more-events"
+                aria-expanded={expanded}
+                aria-label={expanded ? `Show fewer releases on ${iso}` : `Show ${dayItems.length - itemLimit} more releases on ${iso}`}
+                onClick={() => setExpandedDay(expanded ? null : iso)}
+              >{expanded ? "Show less" : `+${dayItems.length - itemLimit} more`}</button>}
             </div>;
           })}
         </div>
