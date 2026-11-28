@@ -267,7 +267,6 @@ function AnnouncementsPage() {
   const items = result.filter === filter ? result.items : [];
   const error = loading ? "" : result.error;
   const hasMore = result.filter === filter && result.hasMore;
-  const duplicates = items.reduce((total, item) => total + item.duplicate_count, 0);
   return <main className="page-shell">
     <PageHeading eyebrow="HUGGIN RSS · AI-ANALYSED" title="Announcements" subtitle="Entertainment news from our RSS sources, with the title, platform and streaming date AI found in each article. An article’s publication date is not a verified release date." />
     <section className="feed-section" aria-label="RSS announcements">
@@ -277,13 +276,14 @@ function AnnouncementsPage() {
             <option value="all">All news</option><option value="ott">OTT releases only</option>
           </select>
         </label>
-        {!loading && !error && <span className="duplicate-note" data-testid="duplicate-note">{duplicates ? `${duplicates} duplicate ${duplicates === 1 ? "item" : "items"} merged` : "Duplicates suppressed"}</span>}
+        {!loading && !error && <span className="duplicate-note" data-testid="duplicate-note">All items shown, including the same story from several feeds</span>}
       </div>
       {loading && items.length === 0 ? <div className="empty-state" role="status">Loading announcements…</div>
         : error ? <div className="empty-state error-state" role="alert">{error}</div>
         : items.length ? <div className="announcement-list">{items.map((item) => <article className="announcement-card" key={item.id}>
           <div className="announcement-source"><span>{item.publisher || item.source_name}</span><span>{item.published_at ? `Article published ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(new Date(item.published_at))}` : "Article date not provided"}</span></div>
           <h2>{item.title}</h2>
+          {item.duplicate_count > 0 && <span className="also-in" data-testid="also-in">Also in {item.duplicate_count} other {item.duplicate_count === 1 ? "feed" : "feeds"}</span>}
           <AnnouncementAi item={item} />
           <a href={item.source_url} target="_blank" rel="noreferrer">Read source <ArrowRight size={13} /></a>
         </article>)}</div>

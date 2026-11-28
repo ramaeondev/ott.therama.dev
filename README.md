@@ -10,7 +10,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The UI reads public endpoints from `api-v3.therama.dev/ott/`. Release pages use `/ott/releases`, the platform directory uses `/ott/platforms`, and the public Announcements page uses `/ott/announcements`. RSS announcements are deduplicated and labeled as news items; their article dates are never treated as release dates. Ingestion and provider credentials stay in the backend repository and server environment.
+The UI reads public endpoints from `ott-api.therama.dev` (the ott-ingest repository, set by `VITE_OTT_API_URL`). Release pages combine `/api/v1/movies/now-showing` and `/api/v1/movies/coming-soon`, the platform directory uses `/api/v1/ott-platforms`, and the Announcements page uses `/ott/announcements`. Announcements are published as soon as they are collected (no review step); every article is listed, and each carries the title, platform and streaming date AI found in it. An article's publication date is never treated as a release date.
 
 ## End-to-end tests
 
@@ -23,6 +23,6 @@ The Playwright suite starts Vite on port 4173 and stubs API responses so UI test
 
 ## Backend
 
-The database migrations and ingestion API live only in the `api.therama.dev` repository. The public API returns India release records marked `API_REPORTED` or `VERIFIED`; RSS items appear in a separate deduplicated announcements feed. The platform endpoint includes candidate services with explicit verification and India-availability fields.
+The database, migrations, Huginn feed setup and AI analysis (DeepSeek, with Claude as a backup) live in the private `ott-ingest` repository.
 
-Huginn remains the collection/orchestration system. OTT RSS entries are preserved as raw source items and duplicate copies are merged in the public feed. TMDB supplies theatrical candidates and Watchmode checks India availability. Release verification and full OTT premiere matching remain gaps for later implementation.
+Huginn remains the collection/orchestration system. OTT RSS entries are preserved as raw source items and every article is listed (the same story from several feeds is shown with an "Also in N other feeds" tag, not hidden). TMDB supplies theatrical candidates and Watchmode checks India availability. Release verification and full OTT premiere matching remain gaps for later implementation.

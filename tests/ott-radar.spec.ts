@@ -115,13 +115,14 @@ test("Platforms are populated from the API and shown as verified", async ({ page
   await expect(page.getByText("India availability confirmed")).toHaveCount(2);
 });
 
-test("Announcements publish deduplicated RSS articles without presenting article dates as release dates", async ({ page }) => {
+test("Announcements list every RSS article without presenting article dates as release dates", async ({ page }) => {
   await page.getByRole("link", { name: "Announcements", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Announcements", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "New series announced for India" })).toBeVisible();
   await expect(page.getByText("Announcement; not a verified release date.")).toBeVisible();
   await expect(page.getByText(/Article published/)).toBeVisible();
-  await expect(page.getByTestId("duplicate-note")).toHaveText("2 duplicate items merged");
+  await expect(page.getByTestId("duplicate-note")).toHaveText("All items shown, including the same story from several feeds");
+  await expect(page.getByTestId("also-in")).toHaveText("Also in 2 other feeds");
   await expect(page.getByRole("link", { name: "Read source" })).toHaveAttribute("href", "https://news.example.com/series");
 });
 
