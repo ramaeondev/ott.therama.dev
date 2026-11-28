@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { Link, NavLink, Route, Routes, useSearchParams } from "react-router-dom";
 import { ArrowDown, ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Search, ShieldCheck } from "lucide-react";
-import { dateToIso, getAnnouncements, getPlatforms, getReleases, indiaToday, type Announcement, type Platform, type Release, type ReleaseCategory, type ReleaseQuery } from "./lib/api";
+import { dateToIso, formatReleaseDate, getAnnouncements, getPlatforms, getReleases, indiaToday, type Announcement, type Platform, type Release, type ReleaseCategory, type ReleaseQuery } from "./lib/api";
 
 const navItems = [
   ["Discover", "/"], ["Theatrical", "/theatrical"], ["OTT", "/ott"], ["This Week", "/week"],
@@ -211,22 +211,44 @@ function PlatformsPage() {
   </main>;
 }
 
+const KIND_LABEL: Record<string, string> = { movie: "Film", series: "Series", show: "Show" };
+
+/** What the API's AI analysis found: which title, which platform, which streaming date (only if the article states it). */
+function AnnouncementAi({ item }: { item: Announcement }) {
+  const ai = item.ai;
+  if (!ai || ai.status !== "done") return <p>Announcement; not a verified release date.</p>;
+  const titles = ai.titles.filter((t) => t.platform || t.releaseDate);
+  return <div className="announcement-ai" data-testid="announcement-ai">
+    {ai.summary && <p className="announcement-summary">{ai.summary}</p>}
+    {titles.length > 0 && <ul className="announcement-titles">{titles.map((t) => <li key={`${t.title}-${t.platform?.slug ?? t.platformText ?? ""}`}>
+      <strong>{t.title}</strong>
+      {t.kind !== "unknown" && <span className="title-kind">{KIND_LABEL[t.kind] ?? t.kind}</span>}
+      {(t.platform || t.platformText) && <span className="title-platform">{t.platform?.name ?? t.platformText}</span>}
+      {t.releaseDate && <span className="title-date">Streaming {formatReleaseDate(t.releaseDate)}</span>}
+      {!t.releaseDate && t.dateText && <span className="title-date">{t.dateText}</span>}
+    </li>)}</ul>}
+    <p className="announcement-ai-note">{ai.isOtt ? "AI-extracted from the article" : "Not about a streaming release"}; article date is not a release date.</p>
+  </div>;
+}
+
 function AnnouncementsPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [ottOnly, setOttOnly] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [result, setResult] = useState<{ key: string; query: string; items: Announcement[]; hasMore: boolean; error: string }>({ key: "", query: "", items: [], hasMore: false, error: "" });
+  const [result, setResult] = useState<{ key: string; filter: string; items: Announcement[]; hasMore: boolean; error: string }>({ key: "", filter: "", items: [], hasMore: false, error: "" });
   useEffect(() => { const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setOffset(0); }, 250); return () => window.clearTimeout(timer); }, [query]);
-  const requestKey = `${debouncedQuery}:${offset}`;
+  const filter = `${debouncedQuery}|${ottOnly}`;
+  const requestKey = `${filter}:${offset}`;
   useEffect(() => {
     let active = true;
-    getAnnouncements({ q: debouncedQuery || undefined, limit: 51, offset }).then((rows) => {
+    getAnnouncements({ q: debouncedQuery || undefined, ott: ottOnly || undefined, limit: 51, offset }).then((rows) => {
       if (active) {
         const page = rows.slice(0, 50);
         setResult((current) => ({
           key: requestKey,
-          query: debouncedQuery,
-          items: offset && current.query === debouncedQuery ? [...current.items, ...page] : page,
+          filter,
+          items: offset && current.filter === filter ? [...current.items, ...page] : page,
           hasMore: rows.length > 50,
           error: "",
         }));
@@ -234,32 +256,38 @@ function AnnouncementsPage() {
     })
       .catch((reason: unknown) => { if (active) setResult((current) => ({
         key: requestKey,
-        query: debouncedQuery,
-        items: current.query === debouncedQuery ? current.items : [],
+        filter,
+        items: current.filter === filter ? current.items : [],
         hasMore: false,
         error: reason instanceof Error ? reason.message : "Could not load announcements.",
       })); });
     return () => { active = false; };
-  }, [debouncedQuery, offset, requestKey]);
+  }, [debouncedQuery, ottOnly, offset, filter, requestKey]);
   const loading = result.key !== requestKey;
-  const items = result.query === debouncedQuery ? result.items : [];
+  const items = result.filter === filter ? result.items : [];
   const error = loading ? "" : result.error;
-  const hasMore = result.query === debouncedQuery && result.hasMore;
+  const hasMore = result.filter === filter && result.hasMore;
   const duplicates = items.reduce((total, item) => total + item.duplicate_count, 0);
   return <main className="page-shell">
-    <PageHeading eyebrow="HUGGIN RSS · DEDUPLICATED" title="Announcements" subtitle="Entertainment news items from our RSS sources. An article’s publication date is not a verified release date." />
+    <PageHeading eyebrow="HUGGIN RSS · AI-ANALYSED" title="Announcements" subtitle="Entertainment news from our RSS sources, with the title, platform and streaming date AI found in each article. An article’s publication date is not a verified release date." />
     <section className="feed-section" aria-label="RSS announcements">
       <div className="announcement-toolbar"><label className="search-field"><Search size={15} /><input aria-label="Search announcements" placeholder="Search announcements..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+        <label className="verification-filter">Show
+          <select aria-label="Filter announcements" value={ottOnly ? "ott" : "all"} onChange={(event) => { setOttOnly(event.target.value === "ott"); setOffset(0); }}>
+            <option value="all">All news</option><option value="ott">OTT releases only</option>
+          </select>
+        </label>
         {!loading && !error && <span className="duplicate-note" data-testid="duplicate-note">{duplicates ? `${duplicates} duplicate ${duplicates === 1 ? "item" : "items"} merged` : "Duplicates suppressed"}</span>}
       </div>
-      {loading ? <div className="empty-state" role="status">Loading announcements…</div>
+      {loading && items.length === 0 ? <div className="empty-state" role="status">Loading announcements…</div>
         : error ? <div className="empty-state error-state" role="alert">{error}</div>
         : items.length ? <div className="announcement-list">{items.map((item) => <article className="announcement-card" key={item.id}>
           <div className="announcement-source"><span>{item.publisher || item.source_name}</span><span>{item.published_at ? `Article published ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(new Date(item.published_at))}` : "Article date not provided"}</span></div>
-          <h2>{item.title}</h2><p>Announcement; not a verified release date.</p>
+          <h2>{item.title}</h2>
+          <AnnouncementAi item={item} />
           <a href={item.source_url} target="_blank" rel="noreferrer">Read source <ArrowRight size={13} /></a>
         </article>)}</div>
-        : <div className="empty-state" role="status">No announcements match this search.</div>}
+        : <div className="empty-state" role="status">{ottOnly ? "No OTT release news matches yet." : "No announcements match this search."}</div>}
       {hasMore && !loading && <button className="load-more" onClick={() => setOffset((value) => value + 50)}>Load more announcements <ArrowDown size={14} /></button>}
       {loading && items.length > 0 && <div className="empty-state" role="status">Loading more announcements…</div>}
     </section>

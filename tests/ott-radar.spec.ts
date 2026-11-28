@@ -125,6 +125,32 @@ test("Announcements publish deduplicated RSS articles without presenting article
   await expect(page.getByRole("link", { name: "Read source" })).toHaveAttribute("href", "https://news.example.com/series");
 });
 
+test("Announcements show the AI-extracted title, platform and streaming date, and filter to OTT news", async ({ page }) => {
+  const analysed = {
+    id: "article-ai", title: "Dr Hassan trailer: Nawazuddin Siddiqui plays the doctor", source_url: "https://news.example.com/dr-hassan",
+    published_at: "2026-11-27T10:00:00Z", source_name: "Hindustan Times Web Series", publisher: "Hindustan Times", duplicate_count: 0,
+    ai: { status: "done", isOtt: true, category: "ott_release_date", summary: "Dr Hassan streams on JioHotstar from December 11.",
+      titles: [{ title: "Dr Hassan", kind: "series", platform: { slug: "jiohotstar", name: "JioHotstar" }, platformText: "JioHotstar",
+        releaseDate: "2026-12-11", dateText: "December 11", languages: [] }], provider: "openai_compat", model: "deepseek" },
+  };
+  const requested: string[] = [];
+  await page.route("**/ott/announcements**", async (route) => {
+    const ott = new URL(route.request().url()).searchParams.get("ott");
+    requested.push(ott ?? "");
+    const rows = ott === "true" ? [analysed] : [analysed, ...announcements];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+  await page.getByRole("link", { name: "Announcements", exact: true }).click();
+  const card = page.locator(".announcement-card", { hasText: "Dr Hassan trailer" });
+  await expect(card.getByText("Dr Hassan streams on JioHotstar from December 11.")).toBeVisible();
+  await expect(card.locator(".title-platform")).toHaveText("JioHotstar");
+  await expect(card.locator(".title-date")).toHaveText(/^Streaming /);
+  await expect(page.locator(".announcement-card")).toHaveCount(2);
+  await page.getByRole("combobox", { name: "Filter announcements" }).selectOption("ott");
+  await expect(page.locator(".announcement-card")).toHaveCount(1);
+  expect(requested).toContain("true");
+});
+
 test("Announcements load more than one page without repeating or dropping rows", async ({ page }) => {
   await page.route("**/ott/announcements**", async (route) => {
     const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);

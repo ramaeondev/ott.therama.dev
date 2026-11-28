@@ -51,6 +51,17 @@ export type Platform = {
   indiaAvailable: boolean;
 };
 
+/** A film or series an announcement is about, as extracted by the API's AI analysis (DeepSeek / Claude). */
+export type AnnouncementTitle = {
+  title: string;
+  kind: "movie" | "series" | "show" | "unknown";
+  platform: { slug: string; name: string | null } | null;
+  platformText: string | null;
+  releaseDate: string | null; // streaming date stated in the article, never the article's own date
+  dateText: string | null;
+  languages: string[];
+};
+
 export type Announcement = {
   id: string;
   title: string;
@@ -59,6 +70,16 @@ export type Announcement = {
   source_name: string;
   publisher: string | null;
   duplicate_count: number;
+  image_url?: string | null;
+  ai?: {
+    status: "pending" | "done" | "failed";
+    isOtt: boolean | null;
+    category: string | null;
+    summary: string | null;
+    titles: AnnouncementTitle[];
+    provider: string | null;
+    model: string | null;
+  };
 };
 
 export type ReleaseQuery = {
@@ -141,7 +162,7 @@ export async function getPlatforms(): Promise<Platform[]> {
   return result.data;
 }
 
-export async function getAnnouncements(query: { from?: string; to?: string; q?: string; limit?: number; offset?: number } = {}): Promise<Announcement[]> {
+export async function getAnnouncements(query: { from?: string; to?: string; q?: string; ott?: boolean; limit?: number; offset?: number } = {}): Promise<Announcement[]> {
   const params = new URLSearchParams();
   Object.entries({ limit: 24, ...query }).forEach(([key, value]) => {
     if (value !== undefined && value !== "") params.set(key, String(value));
